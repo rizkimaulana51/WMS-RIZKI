@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tracking Perpindahan Barang</title>
+<link rel="stylesheet" href="style.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
+<link rel="stylesheet" href="../_shared/glass-app.css">
+</head>
+<body class="app-tracking">
+<header class="topbar">
+  <div>
+    <h1>Tracking Perpindahan Barang</h1>
+    <p class="sub">Upload PDF Location Transfer &rarr; cek hasil &rarr; simpan &rarr; export laporan</p>
+  </div>
+</header>
+
+<nav class="tabs">
+  <button class="tab active" data-tab="trx">Transaksi Baru</button>
+  <button class="tab" data-tab="hist">Riwayat &amp; Export PDF</button>
+</nav>
+
+<main>
+<section id="tab-trx" class="panel">
+  <div class="card">
+    <h2>1. Upload PDF Location Transfer</h2>
+    <p class="hint">Upload file PDF "Detailed Operations" dari WMS. Nomor dokumen, tanggal, motif, container, lot, lokasi awal, dan tujuan dibaca otomatis. Bisa pilih beberapa file sekaligus.</p>
+    <label id="dropzone" class="dropzone" for="fileInput">
+      <b>Klik untuk memilih file PDF</b>
+      <span>atau seret file ke sini</span>
+    </label>
+    <input id="fileInput" type="file" accept=".pdf,application/pdf" multiple hidden>
+    <div id="parseStatus" class="muted"></div>
+  </div>
+
+  <div class="card" id="pendingCard" hidden>
+    <div class="row between wrap" style="margin-top:0">
+      <h2 style="margin:0">2. Cek hasil &amp; simpan</h2>
+      <span id="pendingSummary" class="muted"></span>
+    </div>
+    <div id="pendingList"></div>
+    <div class="row end gap">
+      <button id="btnCancel" class="btn btn-ghost">Batal</button>
+      <button id="btnSave" class="btn btn-primary">Simpan Transaksi</button>
+    </div>
+  </div>
+</section>
+
+<section id="tab-hist" class="panel" hidden>
+  <div class="card">
+    <h2>Export PDF Transaksi</h2>
+    <div class="row gap wrap">
+      <div class="field inline">
+        <label for="expDate">Tanggal</label>
+        <input id="expDate" type="date">
+      </div>
+      <div class="field inline">
+        <label for="pdfOrient">Orientasi kertas</label>
+        <select id="pdfOrient">
+          <option value="landscape">Landscape (melebar)</option>
+          <option value="portrait">Portrait (tegak)</option>
+        </select>
+      </div>
+      <div class="field inline">
+        <label for="pdfMode">Format PDF</label>
+        <select id="pdfMode">
+          <option value="ringkas">Ringkas (per motif &amp; container)</option>
+          <option value="detail">Detail (semua barcode / lot)</option>
+        </select>
+      </div>
+      <button id="btnExport" class="btn btn-primary">Export PDF tanggal ini</button>
+      <button id="btnExportAll" class="btn btn-outline">Export PDF semua riwayat</button>
+    </div>
+    <p class="hint">Format berlaku untuk semua tombol export PDF. Header tiap transaksi memuat source dokumen, tanggal, lokasi awal (DARI) dan tujuan baru (KE). Mode Detail menampilkan setiap barcode beserta qty-nya.</p>
+  </div>
+
+  <div class="card">
+    <div class="row between wrap">
+      <h2>Riwayat Transaksi</h2>
+      <input id="histSearch" type="search" class="search" placeholder="Cari lot, motif, container, lokasi, dokumen...">
+    </div>
+    <div class="row gap wrap sel-bar">
+      <label class="chk"><input type="checkbox" id="selAll"> Pilih semua</label>
+      <span id="selCount" class="muted">0 transaksi dipilih</span>
+      <button id="btnExportSel" class="btn btn-primary btn-sm" disabled>Export PDF terpilih</button>
+    </div>
+    <div id="histList"></div>
+  </div>
+</section>
+</main>
+
+<div id="toast" class="toast" hidden></div>
+<script src="app.js"></script>
+</body>
+</html>
