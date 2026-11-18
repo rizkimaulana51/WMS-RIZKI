@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Scan Manifest — Barcode Stock Checker</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="../_shared/glass-app.css">
+</head>
+<body class="app-barcode">
+
+<div class="tape-bg" aria-hidden="true"></div>
+
+<header class="topbar">
+  <div class="topbar-inner">
+    <div class="brand">
+      <span class="brand-mark">▤</span>
+      <div class="brand-text">
+        <h1>Scan Manifest</h1>
+        <p>Barcode Stock Checker</p>
+      </div>
+    </div>
+    <div class="db-status" id="dbStatus">
+      <span class="dot dot--off" id="dbDot"></span>
+      <span id="dbStatusText">Database belum dimuat</span>
+    </div>
+  </div>
+</header>
+
+<main class="layout">
+
+  <!-- LEFT: control column -->
+  <section class="col col--controls">
+
+    <div class="card" id="dbCard">
+      <div class="card-head">
+        <h2>01 — Database Stock</h2>
+        <span class="card-sub">Sumber data lookup barcode</span>
+      </div>
+
+      <label class="dropzone" id="dropzone" for="dbFileInput">
+        <input type="file" id="dbFileInput" accept=".xlsx,.xls,.csv" hidden>
+        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6">
+          <path d="M12 3v12m0-12 4 4m-4-4-4 4"/>
+          <path d="M4 15v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3"/>
+        </svg>
+        <div class="dropzone-text">
+          <strong>Unggah file database</strong>
+          <span>.xlsx / .csv — kolom pertama harus barcode</span>
+        </div>
+      </label>
+
+      <div class="db-meta" id="dbMeta" hidden>
+        <div class="db-meta-row">
+          <span>File</span><strong id="dbFileName">—</strong>
+        </div>
+        <div class="db-meta-row">
+          <span>Baris terbaca</span><strong id="dbRowCount">0</strong>
+        </div>
+        <div class="db-meta-row">
+          <span>Dimuat</span><strong id="dbLoadedAt">—</strong>
+        </div>
+        <button class="btn btn--ghost btn--sm" id="dbClearBtn" type="button">Hapus database</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-head">
+        <h2>02 — Scan Barcode</h2>
+        <span class="card-sub">Arahkan scanner / ketik manual + Enter</span>
+      </div>
+
+      <form id="scanForm" autocomplete="off">
+        <input
+          type="text"
+          id="scanInput"
+          class="scan-input"
+          placeholder="Tunggu input scanner…"
+          autocomplete="off"
+          autocorrect="off"
+          autocapitalize="off"
+          spellcheck="false"
+        >
+      </form>
+      <p class="scan-hint" id="scanHint">Klik kotak lalu scan. Kursor akan otomatis kembali ke sini.</p>
+
+      <button class="btn-link" id="toggleBatchBtn" type="button">+ Input banyak barcode sekaligus</button>
+
+      <div class="batch-panel" id="batchPanel" hidden>
+        <textarea
+          id="batchInput"
+          class="batch-textarea"
+          rows="5"
+          placeholder="Tempel / ketik banyak barcode di sini, satu per baris (atau pisahkan dengan spasi/koma), lalu klik Proses Semua."
+          autocomplete="off" spellcheck="false"
+        ></textarea>
+        <div class="batch-actions">
+          <button class="btn btn--primary btn--sm" id="processBatchBtn" type="button">Proses Semua</button>
+          <button class="btn btn--ghost btn--sm" id="clearBatchBtn" type="button">Bersihkan</button>
+        </div>
+      </div>
+
+      <div class="session-row">
+        <div class="session-field">
+          <label for="sessionOwner">Sesi / Pemilik scan</label>
+          <input type="text" id="sessionOwner" placeholder="Contoh: Gudang A — Budi">
+        </div>
+      </div>
+      <div class="session-actions">
+        <button class="btn btn--primary btn--sm" id="archiveSessionBtn" type="button">Arsipkan sesi ini</button>
+        <button class="btn btn--ghost btn--sm" id="resetSessionBtn" type="button">Kosongkan tanpa simpan</button>
+      </div>
+      <p class="scan-hint">Arsipkan untuk menyimpan sesi ini ke Riwayat (per pemilik) lalu mulai sesi baru.</p>
+    </div>
+
+    <div class="card stats-card">
+      <div class="card-head">
+        <h2>03 — Ringkasan</h2>
+        <span class="card-sub">Live count sesi berjalan</span>
+      </div>
+      <div class="stats-grid">
+        <div class="stat">
+          <span class="stat-num" id="statTotal">0</span>
+          <span class="stat-label">Total Scan</span>
+        </div>
+        <div class="stat stat--ok">
+          <span class="stat-num" id="statUnique">0</span>
+          <span class="stat-label">Barcode Valid</span>
+        </div>
+        <div class="stat stat--warn">
+          <span class="stat-num" id="statDup">0</span>
+          <span class="stat-label">Duplikat</span>
+        </div>
+        <div class="stat stat--bad">
+          <span class="stat-num" id="statMissing">0</span>
+          <span class="stat-label">Tidak Ditemukan</span>
+        </div>
+      </div>
+    </div>
+
+  </section>
+
+  <!-- RIGHT: results column -->
+  <section class="col col--results">
+
+    <div class="card warnings-card" id="warningsCard" hidden>
+      <div class="card-head">
+        <h2>Peringatan</h2>
+        <span class="card-sub" id="warningsCount">0 isu</span>
+      </div>
+      <ul class="warnings-list" id="warningsList"></ul>
+    </div>
+
+    <div class="card table-card">
+      <div class="card-head card-head--table">
+        <div>
+          <h2>Hasil Scan</h2>
+          <span class="card-sub" id="tableSub">Belum ada barcode discan</span>
+        </div>
+        <div class="table-actions">
+          <input type="search" id="tableFilter" placeholder="Cari di hasil…" class="table-filter">
+          <button class="btn btn--ghost btn--sm" id="copyAllBtn" type="button">Salin Semua Barcode</button>
+          <button class="btn btn--primary btn--sm" id="exportBtn" type="button">Export .xlsx</button>
+        </div>
+      </div>
+
+      <div class="table-wrap">
+        <table id="resultsTable">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Barcode</th>
+              <th>Status</th>
+              <th>Nama Produk / Motif</th>
+              <th>Kode Produk</th>
+              <th>Pemilik Stock</th>
+              <th>Grade</th>
+              <th>Gramasi</th>
+              <th>Jenis Print</th>
+              <th>Warehouse</th>
+              <th>Lokasi</th>
+              <th>Qty</th>
+              <th>UoM</th>
+              <th>Waktu Scan</th>
+              <th>Aksi</th>
+            </tr>
+          </thead>
+          <tbody id="resultsBody">
+            <tr class="empty-row">
+              <td colspan="15">Belum ada data. Scan barcode pertama Anda di panel kiri.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="card history-card">
+      <div class="card-head card-head--table">
+        <div>
+          <h2>04 — Riwayat per Pemilik</h2>
+          <span class="card-sub" id="historySub">Belum ada sesi diarsipkan</span>
+        </div>
+        <div class="table-actions">
+          <select id="historyOwnerFilter" class="table-filter">
+            <option value="">Semua pemilik</option>
+          </select>
+          <button class="btn btn--primary btn--sm" id="downloadAllHistoryBtn" type="button">Unduh Semua Riwayat</button>
+          <button class="btn btn--ghost btn--sm" id="clearHistoryBtn" type="button">Hapus riwayat</button>
+        </div>
+      </div>
+
+      <div class="history-groups" id="historyGroups">
+        <p class="history-empty" id="historyEmpty">Klik <strong>Arsipkan sesi ini</strong> di panel kiri untuk mulai menyimpan riwayat per pemilik.</p>
+      </div>
+    </div>
+
+    <div class="card pivot-card">
+      <div class="card-head card-head--table">
+        <div>
+          <h2>05 — Pivot: Motif × Container</h2>
+          <span class="card-sub" id="pivotSub">Rekap total roll &amp; total meter</span>
+        </div>
+        <div class="table-actions">
+          <select id="pivotScope" class="table-filter">
+            <option value="active">Sesi aktif</option>
+            <option value="history-all">Riwayat — semua pemilik</option>
+          </select>
+          <button class="btn btn--primary btn--sm" id="downloadPivotBtn" type="button">Unduh Pivot .xlsx</button>
+        </div>
+      </div>
+
+      <div class="table-wrap">
+        <table id="pivotTable">
+          <thead>
+            <tr>
+              <th>Nama Motif</th>
+              <th>No Container</th>
+              <th>Total Roll</th>
+              <th>Total Meter</th>
+            </tr>
+          </thead>
+          <tbody id="pivotBody">
+            <tr class="empty-row"><td colspan="4">Belum ada data untuk direkap.</td></tr>
+          </tbody>
+          <tfoot id="pivotFoot"></tfoot>
+        </table>
+      </div>
+      <p class="scan-hint" id="pivotNote"></p>
+    </div>
+
+  </section>
+
+</main>
+
+<div class="toast" id="toast"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
