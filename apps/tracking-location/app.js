@@ -32,8 +32,25 @@
   const PDFJS_WORKER = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
   const DOC_RE = /^[A-Za-z]{2,}\/[A-Za-z]+\/{1,2}[\w/.\-]+$/;          // contoh: GDA/INT//26/11/17/47860
   const DATE_RE = /(\d{2})\/(\d{2})\/(\d{4})\s+(\d{2}):(\d{2}):(\d{2})/; // MM/DD/YYYY HH:MM:SS
-  // Batas kolom tabel sebagai pecahan lebar halaman: [produk, lot, container, source, destination, done, uom]
-  const COL = [0.092, 0.225, 0.362, 0.470, 0.616, 0.798, 0.867];
+
+
+  // Posisi tengah tiap kolom (pecahan lebar halaman) — dipakai bila judul tabel tidak ditemukan
+  const DEFAULT_CENTERS = [0.073, 0.153, 0.279, 0.400, 0.540, 0.714, 0.840, 0.910];
+  const cx = (i) => i.x + (i.w || 0) / 2;
+
+  // Lebar kolom tabel Odoo berubah-ubah menurut isi, jadi batas kolom dibaca dari judul tabel
+  // di tiap halaman: [No, Product, Lot, Container, Source, Destination, Done, UoM].
+  function detectBounds(items, W, fallbackCenters) {
+    const find = (re) => items.find((i) => re.test(i.s));
+    const heads = [/^No\.$/, /^Product$/, /^Lot\/Serial/, /^Container$/, /^Source/, /^Destination/, /^Done$/, /^Unit/].map(find);
+    let centers = fallbackCenters;
+    if (heads.every(Boolean)) {
+      const c = heads.map(cx);
+      if (c.every((v, k) => k === 0 || v > c[k - 1])) centers = c;
+    }
+    const bounds = centers.slice(1).map((v, k) => (centers[k] + v) / 2);
+    return { centers, bounds };
+  }
 
   function lineJoin(items) {
     // gabungkan item teks per baris visual (atas ke bawah, kiri ke kanan)
@@ -54,24 +71,34 @@
 
     const info = { doc: '', dt: null, by: '', total: null };
     const rows = []; let failed = 0;
+    let lastCenters = null;
 
     for (let p = 1; p <= pdf.numPages; p++) {
       const page = await pdf.getPage(p);
       const W = page.getViewport({ scale: 1 }).width;
       const tc = await page.getTextContent();
-      const items = tc.items.filter((i) => i.str.trim()).map((i) => ({ s: i.str.trim(), x: i.transform[4], y: i.transform[5] }));
+      const items = tc.items.filter((i) => i.str.trim()).map((i) => ({ s: i.str.trim(), x: i.transform[4], y: i.transform[5], w: i.width || 0 }));
 
       if (p === 1) {
         const strs = tc.items.map((i) => i.str.trim()).filter(Boolean);
         info.doc = strs.find((s) => DOC_RE.test(s)) || '';
         info.dt = (strs.map((s) => s.match(DATE_RE)).find(Boolean)) || null;
-        const bi = strs.indexOf('Created By'); if (bi >= 0) info.by = strs[bi + 1] || '';
+        const cb = items.find((i) => i.s === 'Created By');
+        if (cb) { // nilai ada tepat di bawah label (posisi x sama)
+          const below = items.filter((i) => i.y < cb.y && Math.abs(i.x - cb.x) < 4).sort((a, b) => b.y - a.y)[0];
+          info.by = below ? below.s : '';
+        }
+        if (!info.by) { const bi = strs.indexOf('Created By'); if (bi >= 0) info.by = strs[bi + 1] || ''; }
         const ti = strs.indexOf('Total Qty');
         if (ti >= 0) { const v = strs.slice(ti + 1, ti + 3).find((s) => /^[\d,]+(\.\d+)?$/.test(s)); if (v) info.total = parseFloat(v.replace(/,/g, '')); }
       }
 
       // baris tabel dimulai dari angka pada kolom "No."
-      const nums = items.filter((i) => /^\d+$/.test(i.s) && i.x < COL[0] * W && i.y > 60).sort((a, b) => b.y - a.y);
+      const { centers, bounds: B } = detectBounds(items, W, lastCenters || DEFAULT_CENTERS.map((v) => v * W));
+      lastCenters = centers;
+      const colOf = (i) => { const c = cx(i); let k = 0; while (k < B.length && c > B[k]) k++; return k; };
+
+      const nums = items.filter((i) => /^\d+$/.test(i.s) && colOf(i) === 0 && i.y > 60).sort((a, b) => b.y - a.y);
       if (!nums.length) continue;
       const ys = nums.map((n) => n.y);
       const buckets = nums.map(() => []);
@@ -82,14 +109,14 @@
         if (idx >= 0) buckets[idx].push(it);
       }
       buckets.forEach((b) => {
-        const col = (lo, hi) => lineJoin(b.filter((i) => i.x >= lo * W && i.x < hi * W));
-        const product = col(COL[0], COL[1]);
-        const lot = col(COL[1], COL[2]).replace(/\s+/g, '');
-        const container = col(COL[2], COL[3]);
-        const from = col(COL[3], COL[4]);
-        const dest = col(COL[4], COL[5]);
-        const done = col(COL[5], COL[6]);
-        const uom = col(COL[6], 2);
+        const col = (k) => lineJoin(b.filter((i) => colOf(i) === k));
+        const product = col(1);
+        const lot = col(2).replace(/\s+/g, '');
+        const container = col(3);
+        const from = col(4);
+        const dest = col(5);
+        const done = col(6);
+        const uom = col(7);
         const pm = product.match(/^\[([^\]]+)\]\s*(.*)$/);
         const code = pm ? pm[1] : '';
         const motif = (pm ? pm[2] : product).replace(/\s*\(.*$/, '').trim();
