@@ -1,0 +1,7 @@
+{
+  "name": "wms-hub",
+  "version": "1.0.0",
+  "private": true,
+  "description": "WMS Hub - Report Daily, Tracking Location, Barcode Scanning dalam satu web (glassmorphism)",
+  "scripts": { "dev": "npx serve ." }
+}
