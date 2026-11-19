@@ -3,21 +3,25 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#4f46e5">
+<meta name="theme-color" content="#0a0818">
+<meta name="color-scheme" content="dark">
 <title>WMS Hub — Warehouse Management</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📦</text></svg>">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/shell.css">
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/css/shell.css">
 </head>
 <body>
 
-<!-- latar belakang gradient + blob -->
+<!-- latar: cahaya berwarna + benda kaca melayang -->
 <div class="bg" aria-hidden="true">
-  <span class="blob b1"></span>
-  <span class="blob b2"></span>
-  <span class="blob b3"></span>
+  <span class="glow g1"></span><span class="glow g2"></span><span class="glow g3"></span><span class="glow g4"></span>
+  <span class="orb o1"></span>
+  <span class="cube"></span>
+  <span class="orb o2"></span>
+  <span class="ring"></span>
+  <span class="orb o3"></span>
 </div>
 
 <div class="app">
@@ -25,7 +29,7 @@
   <!-- ================= SIDEBAR ================= -->
   <aside class="sidebar glass" id="sidebar">
     <div class="brand">
-      <div class="brand-logo">📦</div>
+      <div class="brand-logo"><svg viewBox="0 0 24 24"><path d="M12 3 4 7v10l8 4 8-4V7l-8-4Z"/><path d="m4 7 8 4 8-4M12 11v10"/></svg></div>
       <div class="brand-text">
         <strong>WMS Hub</strong>
         <small>Warehouse Management</small>
@@ -68,6 +72,11 @@
         <h1 id="pageTitle">Dashboard</h1>
         <p id="pageDesc">Ringkasan semua modul gudang</p>
       </div>
+      <label class="search" aria-label="Cari menu">
+        <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+        <input id="search" type="search" placeholder="Cari modul…" autocomplete="off" spellcheck="false">
+        <kbd>Ctrl K</kbd>
+      </label>
       <button class="reload-btn" id="reloadBtn" title="Muat ulang modul ini" hidden>
         <svg viewBox="0 0 24 24"><path d="M20 12a8 8 0 1 1-2.3-5.6"/><path d="M20 4v5h-5"/></svg>
         <span>Muat ulang</span>
@@ -78,44 +87,72 @@
 
       <!-- ===== Dashboard ===== -->
       <section class="view" id="view-home">
-        <div class="hero glass">
-          <div>
-            <span class="pill">Satu pintu untuk semua aplikasi gudang</span>
-            <h2>Selamat datang di <span class="grad">WMS Hub</span></h2>
-            <p>Report harian, tracking perpindahan lokasi, dan scan barcode sekarang ada dalam satu halaman. Pilih modul di bawah atau lewat menu samping.</p>
+        <div class="dash">
+
+          <!-- Sambutan + grafik -->
+          <article class="panel welcome glass">
+            <div class="panel-head">
+              <div>
+                <h2>Selamat datang kembali</h2>
+                <p>Perpindahan barang di Tracking Location, 14 hari terakhir</p>
+              </div>
+              <span class="chip-select">Roll per hari</span>
+            </div>
+            <div class="chart-box" id="areaBox"></div>
+          </article>
+
+          <!-- Kartu statistik -->
+          <div class="stat-col">
+            <div class="stat glass s1">
+              <span class="tile t-violet"><svg viewBox="0 0 24 24"><path d="M7 7h12M7 7l3-3M7 7l3 3M17 17H5M17 17l-3-3M17 17l-3 3"/></svg></span>
+              <div><small>Transaksi tersimpan</small><b id="st-trx">0</b><em id="st-trx-sub">Belum ada</em></div>
+            </div>
+            <div class="stat glass s2">
+              <span class="tile t-blue"><svg viewBox="0 0 24 24"><path d="M4 5v14M7 5v14M11 5v14M14 5v14M18 5v14M20 5v14"/></svg></span>
+              <div><small>Scan di sesi aktif</small><b id="st-scan">0</b><em id="st-scan-sub">Belum ada scan</em></div>
+            </div>
+            <div class="stat glass s3">
+              <span class="tile t-pink"><svg viewBox="0 0 24 24"><path d="M4 7a2 2 0 0 1 2-2h4l2 2h6a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V7Z"/></svg></span>
+              <div><small>Sesi diarsipkan</small><b id="st-sess">0</b><em>Riwayat per pemilik</em></div>
+            </div>
+            <div class="stat glass s4">
+              <span class="tile t-orange"><svg viewBox="0 0 24 24"><ellipse cx="12" cy="6" rx="7" ry="3"/><path d="M5 6v6c0 1.7 3.1 3 7 3s7-1.3 7-3V6M5 12v6c0 1.7 3.1 3 7 3s7-1.3 7-3v-6"/></svg></span>
+              <div><small>Baris database stock</small><b id="st-db">0</b><em id="st-db-sub">Belum dimuat</em></div>
+            </div>
           </div>
-        </div>
 
-        <div class="stats">
-          <div class="stat glass"><span class="stat-ico">🔁</span><div><b id="st-trx">0</b><small>Transaksi perpindahan tersimpan</small></div></div>
-          <div class="stat glass"><span class="stat-ico">🧾</span><div><b id="st-scan">0</b><small>Scan di sesi barcode aktif</small></div></div>
-          <div class="stat glass"><span class="stat-ico">🗂️</span><div><b id="st-sess">0</b><small>Sesi scan diarsipkan</small></div></div>
-          <div class="stat glass"><span class="stat-ico">🗃️</span><div><b id="st-db">0</b><small>Baris database stock dimuat</small></div></div>
-        </div>
+          <!-- Donut status scan -->
+          <article class="panel donut-card glass">
+            <div class="panel-head"><div><h2>Hasil scan barcode</h2><p>Sesi yang sedang berjalan</p></div></div>
+            <div class="donut-wrap">
+              <div class="donut" id="donutBox"></div>
+              <ul class="legend" id="legend"></ul>
+            </div>
+          </article>
 
-        <div class="cards">
-          <a class="mod glass" href="#report">
-            <div class="mod-ico c1"><svg viewBox="0 0 24 24"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 8h8M8 12h8M8 16h5"/></svg></div>
-            <h3>Report Daily</h3>
-            <p>Upload Excel stock quant, hasilkan laporan flooring per gudang dan area staging, siap disalin.</p>
-            <span class="go">Buka modul →</span>
+          <!-- Bar tujuan -->
+          <article class="panel bars-card glass">
+            <div class="panel-head"><div><h2>Lokasi tujuan terbanyak</h2><p>Total roll dipindahkan per lokasi tujuan</p></div></div>
+            <div class="hbars" id="barsBox"></div>
+          </article>
+
+          <!-- Pintasan modul -->
+          <a class="quick glass q1" href="#report">
+            <span class="tile t-violet"><svg viewBox="0 0 24 24"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 8h8M8 12h8M8 16h5"/></svg></span>
+            <div><strong>Report Daily</strong><small>Laporan flooring dari Excel</small></div>
           </a>
-          <a class="mod glass" href="#tracking">
-            <div class="mod-ico c2"><svg viewBox="0 0 24 24"><path d="M12 21s7-6.2 7-11.5A7 7 0 0 0 5 9.5C5 14.8 12 21 12 21Z"/><circle cx="12" cy="9.5" r="2.5"/></svg></div>
-            <h3>Tracking Location</h3>
-            <p>Baca PDF Location Transfer, simpan riwayat perpindahan barang, dan export laporan PDF.</p>
-            <span class="go">Buka modul →</span>
+          <a class="quick glass q2" href="#tracking">
+            <span class="tile t-blue"><svg viewBox="0 0 24 24"><path d="M12 21s7-6.2 7-11.5A7 7 0 0 0 5 9.5C5 14.8 12 21 12 21Z"/><circle cx="12" cy="9.5" r="2.5"/></svg></span>
+            <div><strong>Tracking Location</strong><small>Perpindahan dari PDF</small></div>
           </a>
-          <a class="mod glass" href="#barcode">
-            <div class="mod-ico c3"><svg viewBox="0 0 24 24"><path d="M4 5v14M7 5v14M11 5v14M14 5v14M18 5v14M20 5v14"/></svg></div>
-            <h3>Barcode Scanning</h3>
-            <p>Cek stok lewat scan barcode terhadap database Excel, deteksi duplikat, arsip sesi, dan pivot.</p>
-            <span class="go">Buka modul →</span>
+          <a class="quick glass q3" href="#barcode">
+            <span class="tile t-pink"><svg viewBox="0 0 24 24"><path d="M4 5v14M7 5v14M11 5v14M14 5v14M18 5v14M20 5v14"/></svg></span>
+            <div><strong>Barcode Scanning</strong><small>Cek stok per barcode</small></div>
           </a>
         </div>
       </section>
 
-      <!-- ===== Modul (iframe, dimuat saat pertama dibuka & tetap hidup agar data tidak hilang) ===== -->
+      <!-- ===== Modul (iframe: dimuat saat pertama dibuka, tetap hidup agar data tidak hilang) ===== -->
       <section class="view frame-view" id="view-report" hidden>
         <div class="loader"><i></i><span>Memuat Report Daily…</span></div>
         <iframe title="Report Daily" data-src="/apps/report-daily/" loading="lazy"></iframe>
@@ -134,6 +171,6 @@
 </div>
 
 <div class="scrim" id="scrim"></div>
-<script src="js/shell.js"></script>
+<script src="/js/shell.js"></script>
 </body>
 </html>
