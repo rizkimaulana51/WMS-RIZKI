@@ -10,6 +10,8 @@
     scans: [],              // array of scan entries, newest first is NOT assumed; keep chronological
     seenBarcodes: new Map(),// barcode -> count of times scanned this session
     history: [],            // archived sessions: { id, owner, startTime, endTime, scans:[...] }
+    pallet: 1,              // nomor palet yang sedang aktif
+    collapsed: new Set(),   // palet yang dilipat di tabel hasil (tidak disimpan)
   };
 
   const STORAGE_KEYS = {
@@ -17,6 +19,7 @@
     dbMeta: 'bsm_db_meta_v1',
     scans: 'bsm_scans_v1',
     history: 'bsm_history_v1',
+    pallet: 'bsm_pallet_v1',
   };
 
   /* ============================================================
@@ -73,6 +76,11 @@
   const tableFilter  = document.getElementById('tableFilter');
   const exportBtn    = document.getElementById('exportBtn');
 
+  const palletNo = document.getElementById('palletNo');
+  const palletCount = document.getElementById('palletCount');
+  const closePalletBtn = document.getElementById('closePalletBtn');
+  const reopenPalletBtn = document.getElementById('reopenPalletBtn');
+
   const toastEl = document.getElementById('toast');
 
   /* ============================================================
@@ -122,6 +130,10 @@
     }
   }
 
+  function persistPallet() {
+    try { localStorage.setItem(STORAGE_KEYS.pallet, String(state.pallet)); } catch (e) { /* abaikan */ }
+  }
+
   function persistHistory() {
     try {
       localStorage.setItem(STORAGE_KEYS.history, JSON.stringify(state.history));
@@ -152,6 +164,12 @@
         renderAll();
       }
     } catch (e) { console.warn('Gagal memuat sesi scan tersimpan', e); }
+
+    try {
+      const rawPallet = parseInt(localStorage.getItem(STORAGE_KEYS.pallet), 10);
+      const maxUsed = state.scans.reduce((m, x) => Math.max(m, x.pallet || 1), 1);
+      state.pallet = Math.max(Number.isFinite(rawPallet) ? rawPallet : 1, maxUsed);
+    } catch (e) { state.pallet = 1; }
 
     try {
       const rawHistory = localStorage.getItem(STORAGE_KEYS.history);
@@ -306,8 +324,37 @@
     const barcode = normBarcode(raw);
     scanInput.value = '';
     if (!barcode) return;
+    if (PALLET_CMD.test(barcode)) { closePallet(); return; }  // scan barcode "NEXTPALLET" = selesai palet
     addScan(barcode);
   });
+
+  // Perintah penutup palet: barcode khusus (bisa dicetak), atau baris pemisah di input banyak barcode
+  const PALLET_CMD = /^(NEXTPALLET|NEXT-PALLET|PALET|\*PALET\*|-{3,}|={3,})$/i;
+
+  function palletScans(n) { return state.scans.filter(x => (x.pallet || 1) === n); }
+
+  function closePallet(opts = {}) {
+    const n = state.pallet;
+    if (palletScans(n).length === 0) {
+      if (!opts.silent) showToast(`Palet ${n} masih kosong, scan dulu sebelum menutup palet`);
+      return false;
+    }
+    state.pallet = n + 1;
+    persistPallet();
+    if (!opts.silent) {
+      renderAll();
+      showToast(`Palet ${n} selesai. Scan berikutnya masuk Palet ${n + 1}`, 2600);
+    }
+    return true;
+  }
+
+  function reopenPallet() {
+    if (state.pallet <= 1 || palletScans(state.pallet).length > 0) return;
+    state.pallet -= 1;
+    persistPallet();
+    renderAll();
+    showToast(`Palet ${state.pallet} dibuka kembali`);
+  }
 
   function addScan(barcode, opts = {}) {
     const { render = true, flash = true } = opts;
@@ -324,6 +371,7 @@
       status: isMissing ? 'missing' : (isDup ? 'dup' : 'ok'),
       rec: rec || null,
       occurrence: priorCount + 1,
+      pallet: state.pallet,
     };
 
     state.scans.push(entry);
@@ -350,7 +398,8 @@
     if (state.scans.length && !confirm('Kosongkan seluruh hasil scan sesi ini TANPA menyimpan ke riwayat? Data akan hilang permanen.')) return;
     state.scans = [];
     state.seenBarcodes = new Map();
-    persistScans();
+    state.pallet = 1; state.collapsed = new Set();
+    persistScans(); persistPallet();
     renderAll();
     showToast('Sesi dikosongkan');
   });
@@ -374,7 +423,8 @@
 
     state.scans = [];
     state.seenBarcodes = new Map();
-    persistScans();
+    state.pallet = 1; state.collapsed = new Set();
+    persistScans(); persistPallet();
 
     renderAll();
     showToast(`Sesi diarsipkan ke riwayat "${owner}"`);
@@ -400,23 +450,29 @@
       .filter(Boolean);
   }
 
+  // Proses daftar barcode; baris pemisah (---, ===, PALET) menutup palet. Mengembalikan hitungan.
+  function runBarcodes(list) {
+    const c = { ok: 0, dup: 0, missing: 0, scanned: 0, pallets: 0 };
+    for (const bc of list) {
+      if (PALLET_CMD.test(bc)) { if (closePallet({ silent: true })) c.pallets++; continue; }
+      const entry = addScan(bc, { render: false });
+      c.scanned++;
+      if (entry.status === 'ok') c.ok++; else if (entry.status === 'dup') c.dup++; else c.missing++;
+    }
+    return c;
+  }
+
   processBatchBtn.addEventListener('click', () => {
     const barcodes = parseBatchBarcodes(batchInput.value);
     if (barcodes.length === 0) {
       showToast('Tidak ada barcode yang terbaca dari kotak input');
       return;
     }
-    let ok = 0, dup = 0, missing = 0;
-    for (const bc of barcodes) {
-      const entry = addScan(bc, { render: false });
-      if (entry.status === 'ok') ok++;
-      else if (entry.status === 'dup') dup++;
-      else missing++;
-    }
+    const c = runBarcodes(barcodes);
     persistScans();
     renderAll();
     batchInput.value = '';
-    showToast(`${barcodes.length} barcode diproses — ${ok} valid, ${dup} duplikat, ${missing} tidak ditemukan`, 3200);
+    showToast(`${c.scanned} barcode diproses — ${c.ok} valid, ${c.dup} duplikat, ${c.missing} tidak ditemukan${c.pallets ? `, ${c.pallets} pemisah palet` : ''}`, 3400);
   });
 
   // Allow pasting a multi-line list directly into the single scan input too:
@@ -426,17 +482,11 @@
     const barcodes = parseBatchBarcodes(text);
     if (barcodes.length > 1) {
       e.preventDefault();
-      let ok = 0, dup = 0, missing = 0;
-      for (const bc of barcodes) {
-        const entry = addScan(bc, { render: false });
-        if (entry.status === 'ok') ok++;
-        else if (entry.status === 'dup') dup++;
-        else missing++;
-      }
+      const c = runBarcodes(barcodes);
       persistScans();
       renderAll();
       scanInput.value = '';
-      showToast(`${barcodes.length} barcode ditempel & diproses — ${ok} valid, ${dup} duplikat, ${missing} tidak ditemukan`, 3200);
+      showToast(`${c.scanned} barcode ditempel & diproses — ${c.ok} valid, ${c.dup} duplikat, ${c.missing} tidak ditemukan${c.pallets ? `, ${c.pallets} pemisah palet` : ''}`, 3400);
     }
   });
 
@@ -474,12 +524,31 @@
      RENDER
   ============================================================ */
   function renderAll(opts = {}) {
+    renderPalletBar();
     renderStats();
     renderWarnings();
     renderTable(opts);
     renderHistory();
     renderPivot();
   }
+
+  function renderPalletBar() {
+    const n = state.pallet;
+    const cnt = palletScans(n).length;
+    palletNo.textContent = n;
+    palletCount.textContent = cnt ? `${cnt.toLocaleString('id-ID')} scan` : 'belum ada scan';
+    closePalletBtn.textContent = `✓ Selesai Palet ${n}`;
+    closePalletBtn.disabled = cnt === 0;
+    const canReopen = n > 1 && cnt === 0;
+    reopenPalletBtn.hidden = !canReopen;
+    reopenPalletBtn.textContent = `↩ Buka lagi Palet ${n - 1}`;
+  }
+
+  closePalletBtn.addEventListener('click', () => { closePallet(); scanInput.focus(); });
+  reopenPalletBtn.addEventListener('click', () => { reopenPallet(); scanInput.focus(); });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'F2') { e.preventDefault(); closePallet(); scanInput.focus(); }
+  });
 
   function sessionCounts(scans) {
     const ok = scans.filter(s => s.status === 'ok').length;
@@ -602,10 +671,15 @@
   /* ---- history export helpers ---- */
 
   function scanRowsForExport(scans, extra = {}) {
+    const perPallet = new Map();
     return scans.map((s, i) => {
       const r = s.rec || {};
+      const pn = s.pallet || 1;
+      const inP = (perPallet.get(pn) || 0) + 1; perPallet.set(pn, inP);
       return {
         'No': i + 1,
+        'Palet': pn,
+        'No di Palet': inP,
         'Barcode': s.barcode,
         'Status': s.status === 'ok' ? 'OK' : s.status === 'dup' ? 'DUPLIKAT' : 'TIDAK DITEMUKAN',
         'Nama Produk/Motif': r.productName || '',
@@ -813,17 +887,34 @@
     warningsList.innerHTML = issues.slice().reverse().map(s => {
       if (s.status === 'dup') {
         const name = s.rec ? escapeHtml(s.rec.productName || '—') : '—';
-        return `<li class="warning-item">
-          <span class="warning-badge">Duplikat</span>
+        return `<li class="warning-item" data-jump="${s.id}" title="Klik untuk lompat ke barisnya">
+          <span class="warning-badge">Duplikat</span><span class="pallet-tag">Palet ${s.pallet || 1}</span>
           <span class="warning-text">Barcode <code>${escapeHtml(s.barcode)}</code> sudah discan sebelumnya (scan ke-${s.occurrence}) — item: <strong>${name}</strong></span>
         </li>`;
       }
-      return `<li class="warning-item is-missing">
-        <span class="warning-badge">Tidak ada</span>
+      return `<li class="warning-item is-missing" data-jump="${s.id}" title="Klik untuk lompat ke barisnya">
+        <span class="warning-badge">Tidak ada</span><span class="pallet-tag">Palet ${s.pallet || 1}</span>
         <span class="warning-text">Barcode <code>${escapeHtml(s.barcode)}</code> tidak ditemukan di database.</span>
       </li>`;
     }).join('');
   }
+
+  warningsList.addEventListener('click', (e) => {
+    const li = e.target.closest('[data-jump]');
+    if (!li) return;
+    const id = li.getAttribute('data-jump');
+    const sc = state.scans.find(x => x.id === id);
+    if (!sc) return;
+    tableFilter.value = '';
+    state.collapsed.delete(sc.pallet || 1);
+    renderTable();
+    const tr = resultsBody.querySelector(`tr[data-id="${id}"]`);
+    if (tr) {
+      tr.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      tr.classList.add('row--focus');
+      setTimeout(() => tr.classList.remove('row--focus'), 2200);
+    }
+  });
 
   function renderTable(opts = {}) {
     const filterVal = tableFilter.value.trim().toLowerCase();
@@ -845,7 +936,7 @@
     }
 
     if (rows.length === 0) {
-      resultsBody.innerHTML = `<tr class="empty-row"><td colspan="15">${
+      resultsBody.innerHTML = `<tr class="empty-row"><td colspan="16">${
         state.scans.length === 0
           ? 'Belum ada data. Scan barcode pertama Anda di panel kiri.'
           : 'Tidak ada hasil yang cocok dengan filter.'
@@ -853,9 +944,44 @@
       return;
     }
 
-    // show newest first
+    // statistik & nomor urut per palet (dihitung dari seluruh sesi, bukan hanya hasil filter)
+    const stats = new Map();
+    const idxInPallet = new Map();
+    for (const x of state.scans) {
+      const p = x.pallet || 1;
+      const st = stats.get(p) || { total: 0, ok: 0, dup: 0, missing: 0 };
+      st.total++; st[x.status]++;
+      stats.set(p, st);
+      idxInPallet.set(x.id, st.total);
+    }
+
+    // tampilkan yang terbaru dulu; setiap palet diberi baris pemisah
     const ordered = rows.slice().reverse();
-    resultsBody.innerHTML = ordered.map((s, i) => {
+    let lastPallet = null;
+    const html = [];
+    ordered.forEach((s, i) => {
+      const p = s.pallet || 1;
+      if (p !== lastPallet) {
+        lastPallet = p;
+        const st = stats.get(p);
+        const issues = st.dup + st.missing;
+        const folded = state.collapsed.has(p);
+        html.push(`<tr class="pallet-row${p === state.pallet ? ' is-active' : ''}${issues ? ' has-issue' : ''}" data-pallet="${p}">
+          <td colspan="16"><div class="pallet-head">
+            <span class="pallet-chevron">${folded ? '▸' : '▾'}</span>
+            <strong>PALET ${p}</strong>
+            <span class="pallet-state">${p === state.pallet ? 'Sedang discan' : 'Selesai'}</span>
+            <span class="pallet-stats">
+              <b>${st.total.toLocaleString('id-ID')}</b> scan
+              <span class="pc pc-ok">${st.ok} OK</span>
+              ${st.dup ? `<span class="pc pc-dup">${st.dup} duplikat</span>` : ''}
+              ${st.missing ? `<span class="pc pc-bad">${st.missing} tidak ada</span>` : ''}
+            </span>
+            <span class="pallet-flag ${issues ? 'is-bad' : 'is-good'}">${issues ? `⚠ ${issues} bermasalah` : '✓ Bersih'}</span>
+          </div></td></tr>`);
+      }
+      if (state.collapsed.has(p)) return;
+
       const n = rows.length - i;
       const r = s.rec || {};
       const statusHtml = s.status === 'ok'
@@ -865,8 +991,9 @@
           : '<span class="status-pill status-pill--missing">Tidak ada</span>';
       const rowClass = s.status === 'dup' ? 'row--dup' : s.status === 'missing' ? 'row--missing' : '';
       const time = new Date(s.time);
-      return `<tr class="${rowClass}" data-id="${s.id}">
+      html.push(`<tr class="${rowClass}" data-id="${s.id}">
         <td>${n}</td>
+        <td class="pallet-cell">${p}-${idxInPallet.get(s.id)}</td>
         <td class="barcode-cell">${escapeHtml(s.barcode)}</td>
         <td>${statusHtml}</td>
         <td>${escapeHtml(r.productName || (s.status === 'missing' ? '—' : ''))}</td>
@@ -886,9 +1013,31 @@
             <button class="row-remove" title="Hapus baris" data-remove="${s.id}">✕</button>
           </div>
         </td>
-      </tr>`;
-    }).join('');
+      </tr>`);
+    });
+    resultsBody.innerHTML = html.join('');
+    syncPalletWidth();
   }
+
+  // Tabel lebar bisa digulir ke samping; baris palet dibuat selebar area yang terlihat
+  function syncPalletWidth() {
+    const wrap = resultsBody.closest('.table-wrap');
+    if (wrap) wrap.style.setProperty('--wrap-w', Math.max(wrap.clientWidth - 6, 280) + 'px');
+  }
+  window.addEventListener('resize', syncPalletWidth);
+  if (window.ResizeObserver) {
+    const w = resultsBody.closest('.table-wrap');
+    if (w) new ResizeObserver(syncPalletWidth).observe(w);
+  }
+
+  // lipat / buka satu palet dengan klik pada barisnya
+  resultsBody.addEventListener('click', (e) => {
+    const head = e.target.closest('.pallet-row');
+    if (!head) return;
+    const p = Number(head.getAttribute('data-pallet'));
+    if (state.collapsed.has(p)) state.collapsed.delete(p); else state.collapsed.add(p);
+    renderTable();
+  });
 
   resultsBody.addEventListener('click', (e) => {
     const copyBtn = e.target.closest('[data-copy]');
@@ -964,10 +1113,15 @@
       showToast('Belum ada data untuk diexport');
       return;
     }
+    const perPallet = new Map();
     const rows = state.scans.map((s, i) => {
       const r = s.rec || {};
+      const pn = s.pallet || 1;
+      const inP = (perPallet.get(pn) || 0) + 1; perPallet.set(pn, inP);
       return {
         'No': i + 1,
+        'Palet': pn,
+        'No di Palet': inP,
         'Barcode': s.barcode,
         'Status': s.status === 'ok' ? 'OK' : s.status === 'dup' ? 'DUPLIKAT' : 'TIDAK DITEMUKAN',
         'Nama Produk/Motif': r.productName || '',

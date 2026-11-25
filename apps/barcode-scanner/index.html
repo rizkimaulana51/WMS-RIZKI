@@ -86,6 +86,17 @@
       </form>
       <p class="scan-hint" id="scanHint">Klik kotak lalu scan. Kursor akan otomatis kembali ke sini.</p>
 
+      <div class="pallet-bar" id="palletBar">
+        <div class="pallet-info">
+          <span class="pallet-label">Palet aktif</span>
+          <strong id="palletNo">1</strong>
+          <span class="pallet-count" id="palletCount">belum ada scan</span>
+        </div>
+        <button class="btn btn--primary btn--sm" id="closePalletBtn" type="button" disabled>✓ Selesai Palet 1</button>
+        <button class="btn btn--ghost btn--sm" id="reopenPalletBtn" type="button" hidden>↩ Buka lagi palet</button>
+      </div>
+      <p class="scan-hint">Selesai satu palet? Klik tombol di atas, tekan <b>F2</b>, atau scan barcode <b>NEXTPALLET</b>. Scan berikutnya otomatis masuk palet baru.</p>
+
       <button class="btn-link" id="toggleBatchBtn" type="button">+ Input banyak barcode sekaligus</button>
 
       <div class="batch-panel" id="batchPanel" hidden>
@@ -171,6 +182,7 @@
           <thead>
             <tr>
               <th>#</th>
+              <th>Palet</th>
               <th>Barcode</th>
               <th>Status</th>
               <th>Nama Produk / Motif</th>
