@@ -683,6 +683,7 @@
         'Barcode': s.barcode,
         'Status': s.status === 'ok' ? 'OK' : s.status === 'dup' ? 'DUPLIKAT' : 'TIDAK DITEMUKAN',
         'Nama Produk/Motif': r.productName || '',
+        'No Container': r.container || '',
         'Kode Produk': r.productCode || '',
         'Pemilik Stock': r.owner || '',
         'Grade': r.grade || '',
@@ -946,13 +947,11 @@
 
     // statistik & nomor urut per palet (dihitung dari seluruh sesi, bukan hanya hasil filter)
     const stats = new Map();
-    const idxInPallet = new Map();
     for (const x of state.scans) {
       const p = x.pallet || 1;
       const st = stats.get(p) || { total: 0, ok: 0, dup: 0, missing: 0 };
       st.total++; st[x.status]++;
       stats.set(p, st);
-      idxInPallet.set(x.id, st.total);
     }
 
     // tampilkan yang terbaru dulu; setiap palet diberi baris pemisah
@@ -977,6 +976,7 @@
               ${st.dup ? `<span class="pc pc-dup">${st.dup} duplikat</span>` : ''}
               ${st.missing ? `<span class="pc pc-bad">${st.missing} tidak ada</span>` : ''}
             </span>
+            <button type="button" class="pallet-copy" data-copy-pallet="${p}" title="Salin semua barcode di Palet ${p}">⧉ Copy Palet ${p}</button>
             <span class="pallet-flag ${issues ? 'is-bad' : 'is-good'}">${issues ? `⚠ ${issues} bermasalah` : '✓ Bersih'}</span>
           </div></td></tr>`);
       }
@@ -993,10 +993,10 @@
       const time = new Date(s.time);
       html.push(`<tr class="${rowClass}" data-id="${s.id}">
         <td>${n}</td>
-        <td class="pallet-cell">${p}-${idxInPallet.get(s.id)}</td>
         <td class="barcode-cell">${escapeHtml(s.barcode)}</td>
         <td>${statusHtml}</td>
         <td>${escapeHtml(r.productName || (s.status === 'missing' ? '—' : ''))}</td>
+        <td>${escapeHtml(r.container || '')}</td>
         <td>${escapeHtml(r.productCode || '')}</td>
         <td>${escapeHtml(r.owner || '')}</td>
         <td>${escapeHtml(r.grade || '')}</td>
@@ -1032,6 +1032,19 @@
 
   // lipat / buka satu palet dengan klik pada barisnya
   resultsBody.addEventListener('click', (e) => {
+    const cp = e.target.closest('[data-copy-pallet]');
+    if (cp) {
+      const pn = Number(cp.getAttribute('data-copy-pallet'));
+      const list = palletScans(pn).map(x => x.barcode);
+      if (!list.length) { showToast(`Palet ${pn} kosong`); return; }
+      copyText(list.join('\n')).then(() => {
+        showToast(`${list.length.toLocaleString('id-ID')} barcode Palet ${pn} disalin`, 2200);
+        cp.textContent = '✓ Tersalin';
+        cp.classList.add('is-copied');
+        setTimeout(() => { cp.textContent = `⧉ Copy Palet ${pn}`; cp.classList.remove('is-copied'); }, 1400);
+      });
+      return;
+    }
     const head = e.target.closest('.pallet-row');
     if (!head) return;
     const p = Number(head.getAttribute('data-pallet'));
@@ -1125,6 +1138,7 @@
         'Barcode': s.barcode,
         'Status': s.status === 'ok' ? 'OK' : s.status === 'dup' ? 'DUPLIKAT' : 'TIDAK DITEMUKAN',
         'Nama Produk/Motif': r.productName || '',
+        'No Container': r.container || '',
         'Kode Produk': r.productCode || '',
         'Pemilik Stock': r.owner || '',
         'Grade': r.grade || '',
